@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from dotenv import load_dotenv
 from telegram import Update
@@ -32,7 +33,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_msg = await update.message.reply_text(f"⏳ Processing {url[:60]}...")
 
         try:
-            # 1. Scrape
             await status_msg.edit_text("🔍 Fetching article content...")
             article = scrape_article(url)
 
@@ -42,19 +42,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if not article.get("text"):
                 await status_msg.edit_text(
-                    "⚠️ Fetched the page but couldn't extract readable text "
-                    "(may be paywalled or JS-heavy). Saving with metadata only."
+                    "⚠️ Fetched the page but couldn't extract readable text. Saving with metadata only."
                 )
 
-            # 2. Analyze with Claude
             await status_msg.edit_text("🤖 Analyzing with Claude...")
             analysis = analyze_article(article)
 
-            # 3. Save to Notion
             await status_msg.edit_text("📝 Saving to Notion...")
             notion_url = save_article(article, analysis)
 
-            # 4. Reply with summary
             tags_str = " ".join(f"#{t}" for t in analysis.get("tags", []))
             ideas = analysis.get("key_ideas", [])
             ideas_str = "\n".join(f"  • {i}" for i in ideas)
@@ -79,10 +75,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(os.environ["TELEGRAM_BOT_TOKEN"]).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
     logger.info("Bot is running...")
-    await app.run_polling()
+    async with app:
+        await app.start()
+        await app.updater.start_polling()
+        # Run forever until interrupted
+        await asyncio.Event().wait()
+        await app.updater.stop()
+        await app.stop()
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
