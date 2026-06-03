@@ -1,0 +1,15 @@
+services:
+  - type: worker
+    name: article-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt && pip install lxml_html_clean
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NOTION_TOKEN
+        sync: false
+      - key: NOTION_DATABASE_ID
+        sync: false
