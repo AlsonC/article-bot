@@ -25,6 +25,59 @@ def detect_platform(url: str) -> str:
     return "generic"
 
 
+def scrape_twitter(url: str) -> dict:
+    """Use fxtwitter's JSON API to extract tweet content."""
+    # Extract path: /username/status/id
+    parsed = urlparse(url)
+    path = parsed.path  # e.g. /JayaGup10/status/2039737982576636294
+
+    api_url = f"https://api.fxtwitter.com{path}"
+    try:
+        resp = httpx.get(api_url, headers=HEADERS, timeout=20, follow_redirects=True)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return {"error": f"Twitter fetch failed: {e}", "url": url}
+
+    tweet = data.get("tweet", {})
+    author = tweet.get("author", {})
+    text = tweet.get("text", "")
+    quote = tweet.get("quote", {})
+
+    # Include quoted tweet text if present
+    if quote.get("text"):
+        text += f"\n\n[Quoting @{quote.get('author', {}).get('screen_name', '')}: {quote.get('text', '')}]"
+
+    author_name = author.get("name", "")
+    screen_name = author.get("screen_name", "")
+    title = f"Tweet by {author_name} (@{screen_name})" if author_name else f"Tweet: {url}"
+
+    # If tweet is just a bare link, follow it and scrape the destination instead
+    if not text:
+        raw_text = tweet.get("raw_text", {}).get("text", "")
+        tco_match = re.search(r"https://t\.co/\S+", raw_text)
+        if tco_match:
+            try:
+                redirect = httpx.get(tco_match.group(0), headers=HEADERS, timeout=10, follow_redirects=True)
+                destination_url = str(redirect.url)
+                destination = scrape_via_jina(destination_url)
+                destination["url"] = url  # keep original tweet URL for Notion
+                destination["author"] = f"{author_name} (@{screen_name})"
+                if destination.get("text"):
+                    return destination
+            except Exception:
+                pass
+        text = f"[Tweet contained no text — may be image/video only. URL: {url}]"
+
+    return {
+        "url": url,
+        "title": title,
+        "author": f"{author_name} (@{screen_name})",
+        "description": None,
+        "text": text[:8000],
+    }
+
+
 def scrape_via_jina(url: str) -> dict:
     """Use Jina AI reader to extract clean text from any URL (free, no key needed)."""
     jina_url = f"https://r.jina.ai/{url}"
@@ -64,20 +117,7 @@ def scrape_article(url: str) -> dict:
     platform = detect_platform(url)
 
     if platform == "twitter":
-        # Route through fxtwitter.com which mirrors tweets in scrapable HTML
-        fx_url = re.sub(r"https://(www\.)?(twitter\.com|x\.com)", "https://fxtwitter.com", url)
-        result = scrape_via_jina(fx_url)
-        result["url"] = url  # keep original URL for Notion
-        if result.get("text"):
-            return result
-        # If fxtwitter also fails, return minimal info
-        return {
-            "url": url,
-            "title": f"Tweet: {url}",
-            "author": None,
-            "description": None,
-            "text": f"[Twitter/X post — content could not be extracted. URL: {url}]",
-        }
+        return scrape_twitter(url)
 
     result = scrape_via_jina(url)
 
