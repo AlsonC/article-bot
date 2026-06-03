@@ -9,7 +9,7 @@ load_dotenv()
 
 from scraper import scrape_article
 from tagger import analyze_article
-from notion_client_wrapper import save_article
+from notion_client_wrapper import save_article, find_existing
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +33,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_msg = await update.message.reply_text(f"⏳ Processing {url[:60]}...")
 
         try:
+            # Check for duplicate before doing any work
+            existing = find_existing(url)
+            if existing:
+                await status_msg.edit_text(f"⚠️ Already saved! [Open in Notion]({existing})", parse_mode="Markdown")
+                continue
+
             await status_msg.edit_text("🔍 Fetching article content...")
             article = scrape_article(url)
 

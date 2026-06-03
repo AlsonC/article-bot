@@ -5,6 +5,19 @@ notion = Client(auth=os.environ["NOTION_TOKEN"])
 DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
 
 
+def find_existing(url: str) -> str | None:
+    """Check if a URL already exists in the database. Returns Notion page URL or None."""
+    response = notion.databases.query(
+        database_id=DATABASE_ID,
+        filter={"property": "URL", "url": {"equals": url}},
+    )
+    results = response.get("results", [])
+    if results:
+        page_id = results[0]["id"].replace("-", "")
+        return f"https://notion.so/{page_id}"
+    return None
+
+
 def save_article(article: dict, analysis: dict) -> str:
     """Save article + analysis to Notion database. Returns the Notion page URL."""
 
