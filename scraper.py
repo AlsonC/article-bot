@@ -64,13 +64,19 @@ def scrape_article(url: str) -> dict:
     platform = detect_platform(url)
 
     if platform == "twitter":
-        # Twitter/X is nearly impossible to scrape; return the URL and let Claude note it
+        # Route through fxtwitter.com which mirrors tweets in scrapable HTML
+        fx_url = re.sub(r"https://(www\.)?(twitter\.com|x\.com)", "https://fxtwitter.com", url)
+        result = scrape_via_jina(fx_url)
+        result["url"] = url  # keep original URL for Notion
+        if result.get("text"):
+            return result
+        # If fxtwitter also fails, return minimal info
         return {
             "url": url,
             "title": f"Tweet: {url}",
             "author": None,
             "description": None,
-            "text": f"[Twitter/X post — content cannot be extracted. URL: {url}]",
+            "text": f"[Twitter/X post — content could not be extracted. URL: {url}]",
         }
 
     result = scrape_via_jina(url)
